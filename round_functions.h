@@ -1,0 +1,217 @@
+#include <stdlib.h> // for u_int_t
+#include <string.h>
+#include <stdio.h>
+
+
+// 1. S-box - Original article S-box
+// actually S-box is "tweaked", but that is equivalent to it 
+__uint8_t S_box[256] = {
+0x18, 0x23, 0xc6, 0xE8, 0x87, 0xB8, 0x01, 0x4F, 0x36, 0xA6, 0xd2, 0xF5, 0x79, 0x6F, 0x91, 0x52,
+0x60, 0xBc, 0x9B, 0x8E, 0xA3, 0x0c, 0x7B, 0x35, 0x1d, 0xE0, 0xd7, 0xc2, 0x2E, 0x4B, 0xFE, 0x57,
+0x15, 0x77, 0x37, 0xE5, 0x9F, 0xF0, 0x4A, 0xdA, 0x58, 0xc9, 0x29, 0x0A, 0xB1, 0xA0, 0x6B, 0x85,
+0xBd, 0x5d, 0x10, 0xF4, 0xcB, 0x3E, 0x05, 0x67, 0xE4, 0x27, 0x41, 0x8B, 0xA7, 0x7d, 0x95, 0xd8,
+0xFB, 0xEE, 0x7c, 0x66, 0xdd, 0x17, 0x47, 0x9E, 0xcA, 0x2d, 0xBF, 0x07, 0xAd, 0x5A, 0x83, 0x33,
+0x63, 0x02, 0xAA, 0x71, 0xc8, 0x19, 0x49, 0xd9, 0xF2, 0xE3, 0x5B, 0x88, 0x9A, 0x26, 0x32, 0xB0,
+0xE9, 0x0F, 0xd5, 0x80, 0xBE, 0xcd, 0x34, 0x48, 0xFF, 0x7A, 0x90, 0x5F, 0x20, 0x68, 0x1A, 0xAE,
+0xB4, 0x54, 0x93, 0x22, 0x64, 0xF1, 0x73, 0x12, 0x40, 0x08, 0xc3, 0xEc, 0xdB, 0xA1, 0x8d, 0x3d,
+0x97, 0x00, 0xcF, 0x2B, 0x76, 0x82, 0xd6, 0x1B, 0xB5, 0xAF, 0x6A, 0x50, 0x45, 0xF3, 0x30, 0xEF,
+0x3F, 0x55, 0xA2, 0xEA, 0x65, 0xBA, 0x2F, 0xc0, 0xdE, 0x1c, 0xFd, 0x4d, 0x92, 0x75, 0x06, 0x8A,
+0xB2, 0xE6, 0x0E, 0x1F, 0x62, 0xd4, 0xA8, 0x96, 0xF9, 0xc5, 0x25, 0x59, 0x84, 0x72, 0x39, 0x4c,
+0x5E, 0x78, 0x38, 0x8c, 0xd1, 0xA5, 0xE2, 0x61, 0xB3, 0x21, 0x9c, 0x1E, 0x43, 0xc7, 0xFc, 0x04,
+0x51, 0x99, 0x6d, 0x0d, 0xFA, 0xdF, 0x7E, 0x24, 0x3B, 0xAB, 0xcE, 0x11, 0x8F, 0x4E, 0xB7, 0xEB,
+0x3c, 0x81, 0x94, 0xF7, 0xB9, 0x13, 0x2c, 0xd3, 0xE7, 0x6E, 0xc4, 0x03, 0x56, 0x44, 0x7F, 0xA9,
+0x2A, 0xBB, 0xc1, 0x53, 0xdc, 0x0B, 0x9d, 0x6c, 0x31, 0x74, 0xF6, 0x46, 0xAc, 0x89, 0x14, 0xE1,
+0x16, 0x3A, 0x69, 0x09, 0x70, 0xB6, 0xd0, 0xEd, 0xcc, 0x42, 0x98, 0xA4, 0x28, 0x5c, 0xF8, 0x86
+};
+
+
+
+
+// Получить элемент матрицы. aka интерпретация массива, как матрицы 
+__uint8_t get_M_el(__uint8_t i, __uint8_t j, __uint8_t* block)  
+    {    return block[i*8 + j];    }
+
+
+
+// ------------- tweaked S-box | Substitution ------------
+/* tweaked S-box 4x4 "mini-boxes":
+   E[16] =     {0x1, 0xB, 0x9, 0xC, 0xD, 0x6, 0xF, 0x3, 0xE, 0x8, 0x7, 0x4, 0xA, 0x2, 0x5, 0x0};
+   E_inv[16] = {0xF, 0x0, 0xD, 0x7, 0xB, 0xE, 0x5, 0xA, 0x9, 0x2, 0xC, 0x1, 0x3, 0x4, 0x8, 0x6};
+   R [16] =    {0x7, 0xC, 0xB, 0xD, 0xE, 0x4, 0x9, 0xF, 0x6, 0x3, 0x8, 0xA, 0x2, 0x5, 0x1, 0x0};
+   tweaked S-box: 
+                 ---L---> 4 bit ---> E    -| -----------+---> E     --> 4 bits (L)
+     M[i][j] ---|                          + ---> R --->| 
+                 ---R---> 4 bit ---> E_inv-| -----------+---> E_inv --> 4 bits (R)     */
+
+
+/* 3. S-box - Manual way - tweaked
+// tweaked S-box 4x4 "mini-boxes":
+__uint8_t E[16] = {0x1, 0xB, 0x9, 0xC, 0xD, 0x6, 0xF, 0x3, 0xE, 0x8, 0x7, 0x4, 0xA, 0x2, 0x5, 0x0};
+__uint8_t E_inv[16] = {0xF, 0x0, 0xD, 0x7, 0xB, 0xE, 0x5, 0xA, 0x9, 0x2, 0xC, 0x1, 0x3, 0x4, 0x8, 0x6};
+__uint8_t R [16] = {0x7, 0xC, 0xB, 0xD, 0xE, 0x4, 0x9, 0xF, 0x6, 0x3, 0x8, 0xA, 0x2, 0x5, 0x1, 0x0};
+
+// translate byte by S_box
+__uint8_t S_box(int i){
+    __uint8_t s=0; // buffer
+    s ^= E[R[E[i>>4]^E_inv[i&0xF]]^E[i>>4]]<<4;       // left half
+    s ^= E_inv[R[E[i>>4]^E_inv[i&0xF]]^E_inv[i&0xF]]; // right half
+    return s;
+}*/
+
+
+
+// [+++] 
+// Here we use "regular S-box" equivalent of "tweaked" S-box - same results, different notation 
+void gamma_f(__uint8_t* block){
+    for (int i = 0; i<64; ++i)
+        block[i] = S_box[block[i]];
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// --------------- Roll columns | permutation / dispertion ---------
+// TODO [Optimization]: Как-то уйти от копирования матрицы - state_cp
+// [+++]
+int sw_i;   // to-swap index
+void pi_f(__uint8_t* state){
+    // PS Я пробовал без копирования "state" вращение сделать, но тогда получалось по вычислениям затратнее и менее понятно - решил так оставить
+    __uint8_t* state_cp = (__uint8_t*) malloc(64);
+    memcpy(state_cp, state, 64); // copy state - to have initial state while rotating - to know exact value of (i, j) place. otherwise we`ll switch not intended values inside column - bc some column`s values switches before other values have
+
+    for (int j = 1; j<8; ++j)     // 0-th column always stays same (rolls by 0)
+        for (int i = 0; i<8; ++i){          // iterrate by rows - downwards
+            sw_i = i>=j ? ((i-j)) : (8+(i-j));  // % - isn`t "mod" operation when it comes to negative nums - so fixing it 
+            //if (i ==0) printf("\n");
+            //printf(" [i:%d, j:%d] sw_i = %d \n", i, j, sw_i);
+            state[i*8 + j] = state_cp[sw_i*8 + j];          // roll each(j) column by j: m[i][j] = m[(i-j)%8][j]
+    }
+    free(state_cp);
+}
+
+
+
+// [+++]
+// -------------- Multiply (right-side) by matrix | Diffusion  --------
+__uint8_t C_diffusion[64] = {
+    0x1, 0x1, 0x4, 0x1, 0x8, 0x5, 0x2, 0x9,
+    0x9, 0x1, 0x1, 0x4, 0x1, 0x8, 0x5, 0x2,
+    0x2, 0x9, 0x1, 0x1, 0x4, 0x1, 0x8, 0x5,
+    0x5, 0x2, 0x9, 0x1, 0x1, 0x4, 0x1, 0x8,
+    0x8, 0x5, 0x2, 0x9, 0x1, 0x1, 0x4, 0x1,
+    0x1, 0x8, 0x5, 0x2, 0x9, 0x1, 0x1, 0x4,
+    0x4, 0x1, 0x8, 0x5, 0x2, 0x9, 0x1, 0x1,
+    0x1, 0x4, 0x1, 0x8, 0x5, 0x2, 0x9, 0x1 
+};
+
+
+/* Multiply two numbers in the GF(2^8) finite field defined 
+  by the polynomial p(x) = x^8 + x^4 + x^3 + x^2 + 1 
+ stack overflow: https://shorturl.at/hqtHT - I understood it, so I can use it:)))
+ */
+__uint8_t gmul(__uint8_t a, __uint8_t b) {
+
+    // optimization 
+    if (a*b<=0xff)
+        return a*b;
+
+    __uint8_t res = 0;                        // buffer
+    __uint8_t i;                      
+    __uint8_t hi_bit_set;                   // highest bit
+
+    // lool up all b`s koeffs in prder to add a**i to buffer p
+    // | .....> | a << .| ....>  0|
+    // | .....> | b >>  | 0   ....|.>
+    for (i = 0; i < 8; i++) {
+            // ----- add b*(a**i) - if b_i == 1 
+            if (b & 1)              // koeff by i-th degree - i-th bit of "b" 
+                res ^= a;             // add (xor="+"" in GF2) "a" shifted left by i bits <=> add a**i  
+            
+
+            // ----- prepare for i+1 degree
+            hi_bit_set = (a & 0x80);// reserve highest bit before shift
+            a <<= 1;                // enpowerin a: a**(i+1)
+
+            // Interesting part:  a := a + p - if "a" overflowed after powering above - return it back into GF/p(x)
+            // so that a**(i+1) is ready to be adden in next round 
+            if (hi_bit_set) 
+                a ^= 0x1d; //  x^8 + x^4 + x^3 + x^2 + 1 = 0x011d - actually can be stored as x^4 + x^3 + x^2 + 1 = 0x1d - suppose xoring of x^8 and x^8 due high bit = 1
+            
+            b >>= 1; // shift next bit on 0-th position (b & 1) 
+    }
+    return res;
+}
+
+
+void thetta_f(__uint8_t* M){
+    /*
+     Про переполнение в ячейках: за 10 раундов байтовая ячейка несколько раз превысит своё макс значение 255 и закольцуется. 
+        эл-ты матрицы по ТЗ - это эл-ты GF/f(x) 
+    */
+
+    // буфер нужен, чтоб М не испортить(значения перезапишутся, а они ещё нужны)
+    __uint8_t* res = (__uint8_t*) calloc(64, 1);
+    // пробегаем и заполняем матрицу построчно
+    for (__uint8_t I=0;I<8;++I) // строки
+    for (__uint8_t J=0;J<8;++J) // столбцы
+    // для выбранного эл-та считаем сумму  
+    for (__uint8_t i=0;i<8;++i)
+        res[8*I+J] ^= gmul( M[8*I+i], C_diffusion[8*i+J]);
+    
+    memcpy(M, res, 64);
+    free(res);
+}
+// --------------------------
+
+
+
+// ------------- bitwise XOR -----------
+// [+++] 
+void sigma_f(__uint8_t* state, __uint8_t* K){
+    for (int i = 0; i<64; ++i) state[i] ^= K[i];
+}
+
+
+
+// --------------- Round function -------
+// [+++] - ошибок не вызывает, все составные функции проверены
+void rho_f(__uint8_t* block, __uint8_t* K_i){
+    /*printf("\n------- Rho: K_i and block\n");
+    state_x(K_i);
+    state_x(block);*/
+
+    gamma_f(block);
+    /*printf("\n\nblock after S-box:\n");
+    state_x(block);*/
+
+    pi_f(block);
+    /*printf("\n\nblock after rotate:\n");
+    state_x(block);*/
+
+    thetta_f(block);
+    /*printf("\n\nblock after matrix mul:\n");
+    state_x(block);*/
+
+    sigma_f(block, K_i);
+    /*printf("\n\nblock after xor:\n");
+    state_x(block);
+    printf("\n------- Rho\n");*/
+}
+/*
+    вобще эта функция изменяет значение block, 
+    т.к. промежуточные иттерации шифрования блока при хэшировании нам не нужны
+
+    НО в KDF - эти промежуточные значения - раундовые ключи, поэтому их нужно не попортить
+    и в случае с KDF сюда пойдёт адрес с копией прошлого блока (ключа), а не сам адрес прошлого блока
+*/
